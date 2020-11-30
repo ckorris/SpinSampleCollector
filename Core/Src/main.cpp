@@ -67,8 +67,8 @@ int isFinished = 0;
 int disableConsoleMessages = 1;
 
 //Timing related.
-std::chrono::time_point<std::chrono::steady_clock> start;
-std::chrono::time_point<std::chrono::steady_clock> end;
+std::chrono::time_point<std::chrono::high_resolution_clock> start;
+std::chrono::time_point<std::chrono::high_resolution_clock> end;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,7 +79,6 @@ static void MX_ETH_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_ADC1_Init(void);
-
 /* USER CODE BEGIN PFP */
 
 //Forward declaration.
@@ -195,7 +194,7 @@ int main(void)
 				  isStarted = 1;
 
 				  //Start DMA attached to the ADC for us. Just give handle to ADC instance, buffer, and buffer size.
-				  start = std::chrono::steady_clock::now();
+				  start = std::chrono::high_resolution_clock::now();
 				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buf, ADC_BUF_LEN);
 
 				  //HAL_Delay(1);
@@ -218,8 +217,10 @@ int main(void)
 		  int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
 		  samplesPerDevice -= ADC_BUF_LEN % SENSOR_COUNT;
 
-		  //std::chrono::duration<double> diff = end-start;
-		  double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+		  std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
+
+		  double seconds = diff.count();
+		  //double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
 		  //for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
 		  for(int i = 0; i < 1; i++) //i is device ID, and offset with in adc_buf.
@@ -233,8 +234,8 @@ int main(void)
 			  packet.Header.AnalongInPins = SENSOR_COUNT;
 			  packet.Header.DeviceID = i;
 			  packet.Header.SampleID = 0; //Temp.
-			  //packet.Header.SamplingDurationUs = 100000; //Temp.
-			  packet.Header.SamplingDurationUs = duration; //Temp.
+			  packet.Header.SamplingDurationUs = 100000; //Temp.
+			  //packet.Header.SamplingDurationUs = diff; //Temp.
 
 			  //packet.Samples = sensorSamples;
 
@@ -451,7 +452,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 921600; //115200
+  huart3.Init.BaudRate = 921600;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -559,7 +560,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : SoundDetector_Pin */
+  /*Configure GPIO pin : SoundDetectorGate_Pin */
   GPIO_InitStruct.Pin = SoundDetectorGate_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -590,7 +591,7 @@ static void MX_GPIO_Init(void)
 //Callback for when buffer is completely filled.
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-	end = std::chrono::steady_clock::now();
+	end = std::chrono::high_resolution_clock::now();
 
 	isFinished = 1;
 	//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
