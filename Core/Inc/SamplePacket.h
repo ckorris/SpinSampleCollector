@@ -12,7 +12,8 @@ struct SamplePacketHeader
 	int SamplingDurationUs;
 	int AnalongInPins;  //Number of AnalogIn pins being read
 
-	int SampleCount;
+	//int SampleCount;
+	int32_t SampleCount;
 };
 
 class SamplePacket

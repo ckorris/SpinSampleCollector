@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdio.h>
+#include <chrono>
 
 #include "SamplePacket.h"
 /* USER CODE END Includes */
@@ -31,7 +32,8 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define SENSOR_COUNT 4
-#define ADC_BUF_LEN 32
+#define ADC_BUF_LEN 65532 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
+						  //or it'll never throw the interrupt.
 
 
 /* USER CODE END PTD */
@@ -63,6 +65,10 @@ int isStarted = 0;
 int isFinished = 0;
 
 int disableConsoleMessages = 1;
+
+//Timing related.
+std::chrono::time_point<std::chrono::steady_clock> start;
+std::chrono::time_point<std::chrono::steady_clock> end;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -189,6 +195,7 @@ int main(void)
 				  isStarted = 1;
 
 				  //Start DMA attached to the ADC for us. Just give handle to ADC instance, buffer, and buffer size.
+				  start = std::chrono::steady_clock::now();
 				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buf, ADC_BUF_LEN);
 
 				  //HAL_Delay(1);
@@ -211,30 +218,36 @@ int main(void)
 		  int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
 		  samplesPerDevice -= ADC_BUF_LEN % SENSOR_COUNT;
 
+		  //std::chrono::duration<double> diff = end-start;
+		  double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
-		  for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
-		  //for(int i = 0; i < 1; i++) //i is device ID, and offset with in adc_buf.
+		  //for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
+		  for(int i = 0; i < 1; i++) //i is device ID, and offset with in adc_buf.
 		  {
 			  uint16_t* sensorSamples = new uint16_t[samplesPerDevice];
+			  //uint16_t sensorSamples[samplesPerDevice];
+
+			  //Make a packet to send from this.
+			  SamplePacket packet(samplesPerDevice);
+			  //SamplePacket packet(200);
+			  packet.Header.AnalongInPins = SENSOR_COUNT;
+			  packet.Header.DeviceID = i;
+			  packet.Header.SampleID = 0; //Temp.
+			  //packet.Header.SamplingDurationUs = 100000; //Temp.
+			  packet.Header.SamplingDurationUs = duration; //Temp.
+
+			  //packet.Samples = sensorSamples;
 
 			  for(int j = 0; j < samplesPerDevice; j++)
 			  {
 				  sensorSamples[j] = adc_buf[j * SENSOR_COUNT + i];
+				  //packet.Samples[j] = j;
 			  }
 
-			  //Make a packet to send from this.
-			  SamplePacket packet(samplesPerDevice);
-			  packet.Header.AnalongInPins = SENSOR_COUNT;
-			  packet.Header.DeviceID = i;
-			  packet.Header.SampleID = 0; //Temp.
-			  packet.Header.SamplingDurationUs = 100000; //Temp.
-
-			  packet.Samples = sensorSamples;
 
 			  packet.Transmit(&huart3);
-			  HAL_Delay(5);
+			  //HAL_Delay(50);
 			  delete [] sensorSamples;
-
 		  }
 
 	  }
@@ -438,7 +451,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
+  huart3.Init.BaudRate = 921600; //115200
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -577,6 +590,8 @@ static void MX_GPIO_Init(void)
 //Callback for when buffer is completely filled.
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
+	end = std::chrono::steady_clock::now();
+
 	isFinished = 1;
 	//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 }
