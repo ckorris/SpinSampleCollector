@@ -23,6 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include <string>
+#include <cstring>
 #include <stdio.h>
 #include <chrono>
 
@@ -31,8 +33,8 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define SENSOR_COUNT 4
-#define ADC_BUF_LEN 65532 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
+#define SENSOR_COUNT 1
+#define ADC_BUF_LEN 160 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
 						  //or it'll never throw the interrupt.
 
 
@@ -59,12 +61,13 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
 uint16_t adc_buf[ADC_BUF_LEN];
+uint16_t transmit_buf[ADC_BUF_LEN];
 
 int isPrimed = 0;
 int isStarted = 0;
 int isFinished = 0;
 
-int disableConsoleMessages = 1;
+int disableConsoleMessages = 0;
 
 //Timing related.
 std::chrono::time_point<std::chrono::high_resolution_clock> start;
@@ -83,8 +86,7 @@ static void MX_ADC1_Init(void);
 
 //Forward declaration.
 void PrintUARTMessage(UART_HandleTypeDef *huart, const char message[]);
-
-void DMATransferComplete(DMA_HandleTypeDef *hdma);
+void PrintUARTIntValue(UART_HandleTypeDef *huart, const char label[], int value);
 
 /* USER CODE END PFP */
 
@@ -176,9 +178,7 @@ int main(void)
 			  //Now that we've given some time to release the button, actually prime it.
 			  isPrimed = 1;
 
-
-
-	  		 }
+		  }
 	 }
 
 	  //If primed and didn't collect samples yet, check the sound detector to see if we can start.
@@ -194,8 +194,8 @@ int main(void)
 				  isStarted = 1;
 
 				  //Start DMA attached to the ADC for us. Just give handle to ADC instance, buffer, and buffer size.
-				  start = std::chrono::high_resolution_clock::now();
-				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)adc_buf, ADC_BUF_LEN);
+				  //start = std::chrono::high_resolution_clock::now();
+				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_buf, ADC_BUF_LEN);
 
 				  //HAL_Delay(1);
 			  }
@@ -204,53 +204,51 @@ int main(void)
 
 	  if (isFinished == 1)
 	  {
-		  HAL_ADC_Stop_DMA(&hadc1);
 
-		  //Clear the visual indicators of being primed and reset the flags that allow for a new sample.
-		  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-		  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-		  isPrimed = 0;
-		  isStarted = 0;
-		  isFinished = 0;
+			//Debug the values to see where they're not being updated.
+		    uint16_t firstValue = transmit_buf[0];
+			PrintUARTIntValue(&huart3, "While Loop Finished Callback val 0: ", firstValue);
 
-		  //Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
-		  int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
-		  samplesPerDevice -= ADC_BUF_LEN % SENSOR_COUNT;
+			//Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
+			int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
+			samplesPerDevice -= ADC_BUF_LEN % SENSOR_COUNT;
 
-		  std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
+			//for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
+			for(int i = 0; i < 1; i++) //i is device ID, and offset with in adc_buf.
+			{
+				uint16_t* sensorSamples = new uint16_t[samplesPerDevice];
+				//uint16_t sensorSamples[samplesPerDevice];
 
-		  double seconds = diff.count();
-		  //double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+				//Make a packet to send from this.
+				//SamplePacket packet(samplesPerDevice);
+				SamplePacket* packet = new SamplePacket(samplesPerDevice);
+				//SamplePacket packet(200);
+				packet->Header.AnalongInPins = SENSOR_COUNT;
+				packet->Header.DeviceID = i;
+				packet->Header.SampleID = 0; //Temp.
+				packet->Header.SamplingDurationUs = 100000; //Temp.
+				//packet.Header.SamplingDurationUs = diff; //Temp.
 
-		  //for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
-		  for(int i = 0; i < 1; i++) //i is device ID, and offset with in adc_buf.
-		  {
-			  uint16_t* sensorSamples = new uint16_t[samplesPerDevice];
-			  //uint16_t sensorSamples[samplesPerDevice];
+				//packet.Samples = sensorSamples;
 
-			  //Make a packet to send from this.
-			  SamplePacket packet(samplesPerDevice);
-			  //SamplePacket packet(200);
-			  packet.Header.AnalongInPins = SENSOR_COUNT;
-			  packet.Header.DeviceID = i;
-			  packet.Header.SampleID = 0; //Temp.
-			  packet.Header.SamplingDurationUs = 100000; //Temp.
-			  //packet.Header.SamplingDurationUs = diff; //Temp.
+				for(int j = 0; j < samplesPerDevice; j++)
+				{
+					sensorSamples[j] = transmit_buf[j * SENSOR_COUNT + i];
+					//packet.Samples[j] = j;
+				}
 
-			  //packet.Samples = sensorSamples;
+				packet->Transmit(&huart3);
+				HAL_Delay(50);
+				delete [] sensorSamples;
+				delete packet;
+			}
 
-			  for(int j = 0; j < samplesPerDevice; j++)
-			  {
-				  sensorSamples[j] = adc_buf[j * SENSOR_COUNT + i];
-				  //packet.Samples[j] = j;
-			  }
-
-
-			  packet.Transmit(&huart3);
-			  //HAL_Delay(50);
-			  delete [] sensorSamples;
-		  }
-
+			//Clear the visual indicators of being primed and reset the flags that allow for a new sample.
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+			HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
+			isPrimed = 0;
+			isStarted = 0;
+			isFinished = 0;
 	  }
 
     /* USER CODE END WHILE */
@@ -342,15 +340,15 @@ static void MX_ADC1_Init(void)
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc1.Init.ScanConvMode = ADC_SCAN_ENABLE;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
   hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
   hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
   hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 4;
+  hadc1.Init.NbrOfConversion = 1;
   hadc1.Init.DMAContinuousRequests = ENABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SEQ_CONV;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
   {
     Error_Handler();
@@ -360,30 +358,6 @@ static void MX_ADC1_Init(void)
   sConfig.Channel = ADC_CHANNEL_3;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_15CYCLES;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_10;
-  sConfig.Rank = ADC_REGULAR_RANK_2;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_13;
-  sConfig.Rank = ADC_REGULAR_RANK_3;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
-  sConfig.Channel = ADC_CHANNEL_0;
-  sConfig.Rank = ADC_REGULAR_RANK_4;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
   {
     Error_Handler();
@@ -411,6 +385,8 @@ static void MX_ETH_Init(void)
   /* USER CODE END ETH_Init 1 */
   heth.Instance = ETH;
   heth.Init.AutoNegotiation = ETH_AUTONEGOTIATION_ENABLE;
+  heth.Init.Speed = ETH_SPEED_100M;
+  heth.Init.DuplexMode = ETH_MODE_FULLDUPLEX;
   heth.Init.PhyAddress = LAN8742A_PHY_ADDRESS;
   heth.Init.MACAddr[0] =   0x00;
   heth.Init.MACAddr[1] =   0x80;
@@ -593,8 +569,24 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
 	end = std::chrono::high_resolution_clock::now();
 
-	isFinished = 1;
-	//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+	if(isFinished == 0)
+	{
+		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+
+		HAL_ADC_Stop_DMA(&hadc1);
+
+		std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
+
+		//double seconds = diff.count(); //Exists only as a breakpoint for observation.
+		//double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+
+		for(int i = 0; i < ADC_BUF_LEN; i++)
+		{
+			transmit_buf[i] = adc_buf[i];
+		}
+
+		isFinished = 1;
+	}
 }
 
 
@@ -610,19 +602,24 @@ void PrintUARTMessage(UART_HandleTypeDef *huart, const char message[])
 	HAL_UART_Transmit(huart, (uint8_t*)newLine, 2, 10);
 }
 
-//Pass callback handle to DMA instance.
-//Enum is from stm32l4xx_hal_dma.h, gives interrupt versions. This is 'full transfer, or 'HAL DMA transfer complete.'
-//Last is handle to callback.
-void DMATransferComplete(DMA_HandleTypeDef *hdma)
+void PrintUARTIntValue(UART_HandleTypeDef *huart, const char label[], int value)
 {
-	//HAL_Delay(200);
-	//Disable UART DMA mode
-	huart3.Instance->CR3 &= ~USART_CR3_DMAT;
+	if(disableConsoleMessages == 1)
+	{
+			return;
+	}
 
-	//Toggle LD2, the on-board LED.
-	//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+	HAL_UART_Transmit(huart, (uint8_t*)label, strlen(label), 10);
+	std::string intstr = std::to_string(value);
+	char const *intchar = intstr.c_str();
+
+
+	HAL_UART_Transmit(huart, (uint8_t*)intchar, strlen(intchar), 10);
+	char newLine[3] = "\r\n";
+	HAL_UART_Transmit(huart, (uint8_t*)newLine, 2, 10);
 
 }
+
 /* USER CODE END 4 */
 
 /**
