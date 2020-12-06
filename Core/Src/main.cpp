@@ -34,7 +34,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define SENSOR_COUNT 1
-#define ADC_BUF_LEN 160 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
+#define ADC_BUF_LEN 32000 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
 						  //or it'll never throw the interrupt.
 
 
@@ -236,6 +236,8 @@ int main(void)
 					sensorSamples[j] = transmit_buf[j * SENSOR_COUNT + i];
 					//packet.Samples[j] = j;
 				}
+
+				packet->Samples = sensorSamples;
 
 				packet->Transmit(&huart3);
 				HAL_Delay(50);
