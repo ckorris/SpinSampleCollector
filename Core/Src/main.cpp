@@ -33,8 +33,12 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define SENSOR_COUNT 4
-#define ADC_BUF_LEN 4 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
+#define ADC_BUF_LEN 24000 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
 						  //or it'll never throw the interrupt.
+
+#define NANOSECOND_DIVIDER 1000000000
+#define MICROSECOND_DIVIDER 1000000
+#define MILLISECOND_DIVIDER 1000
 
 
 /* USER CODE END PTD */
@@ -91,6 +95,9 @@ void PrintUARTIntValue(UART_HandleTypeDef *huart, const char label[], int value)
 
 uint32_t TicksToNanoseconds(TIM_HandleTypeDef &htim, uint32_t ticks);
 
+uint32_t TicksToSubSecond(TIM_HandleTypeDef &htim, uint32_t ticks, double fractionOfSecond); //fractionOfSecond, as in, 1000 for milliseconds.
+
+
 uint32_t ReadCurrentTicks(TIM_HandleTypeDef &htim);
 
 /* USER CODE END PFP */
@@ -143,20 +150,6 @@ int main(void)
   //Enable register 1 for the timer.
   //This would go better in that init function, but as I can't find how to enable it via the Cube GUI, I'd rather keep all my own init code in one place.
   TIM2->CR1 = TIM_CR1_CEN;
-
-  startTicks = ReadCurrentTicks(htim2);
-
-  HAL_Delay(1000);
-
-  endTicks = ReadCurrentTicks(htim2);;
-  //writeTimeTest = TIM2->PSC;
-
-  //HAL_RTC_GetTime(&hrtc, &endTime, RTC_FORMAT_BIN);
-  //HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN);
-
-  PrintUARTIntValue(&huart3, "Start: ", TicksToNanoseconds(htim2, startTicks));
-  PrintUARTIntValue(&huart3, "End: ", TicksToNanoseconds(htim2, endTicks));
-  //PrintUARTIntValue(&huart3, "Clock: ", writeTimeTest);
 
   /* USER CODE END 2 */
 
@@ -213,11 +206,10 @@ int main(void)
 				  isStarted = 1;
 
 				  //Update time.
-				  //HAL_RTC_GetTime(&hrtc, &startTime, RTC_FORMAT_BIN);
-				  //HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN); //We don't need this, but you can't read time without date.
+				  //Reset the counter just to make sure there's no overflow. (There's ways to deal with overflow but let's not for now.)
+				  htim2.Instance->CNT = 0;
+				  startTicks = ReadCurrentTicks(htim2);
 
-				  //Start DMA attached to the ADC for us. Just give handle to ADC instance, buffer, and buffer size.
-				  //start = std::chrono::high_resolution_clock::now();
 				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_buf, ADC_BUF_LEN);
 
 				  //HAL_Delay(1);
@@ -233,8 +225,10 @@ int main(void)
 			//PrintUARTIntValue(&huart3, "While Loop Finished Callback val 0: ", firstValue);
 
 		  	//Get the total duration.
-		  	//TODO
-		  	//PrintUARTIntValue(&huart3, "Time elapsed: ", totalTime);
+		  	uint32_t durationTicks = endTicks - startTicks;
+		  	//TicksToSubSecond(TIM_HandleTypeDef &htim, uint32_t ticks, double fractionOfSecond)
+		  	uint32_t durationInNanoseconds = TicksToSubSecond(htim2, durationTicks, (double)NANOSECOND_DIVIDER);
+		  	PrintUARTIntValue(&huart3, "Time elapsed: ", durationInNanoseconds);
 
 			//Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
 			int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
@@ -253,7 +247,7 @@ int main(void)
 				packet->Header.AnalongInPins = SENSOR_COUNT;
 				packet->Header.DeviceID = i;
 				packet->Header.SampleID = i; //Temp.
-				packet->Header.SamplingDurationUs = 100000; //Temp.
+				packet->Header.SamplingDurationUs = durationInNanoseconds; //Temp.
 				//packet.Header.SamplingDurationUs = diff; //Temp.
 
 				//packet.Samples = sensorSamples;
@@ -672,6 +666,9 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	{
 		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
+		//Log start time in ticks.
+		endTicks = ReadCurrentTicks(htim2);
+
 		HAL_ADC_Stop_DMA(&hadc1);
 
 		//std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
@@ -728,6 +725,16 @@ uint32_t TicksToNanoseconds(TIM_HandleTypeDef &htim, uint32_t ticks)
 
 	return ticks * nanoSecondsPerTick;
 
+}
+
+uint32_t TicksToSubSecond(TIM_HandleTypeDef &htim, uint32_t ticks, double fractionOfSecond)
+{
+	//First get how many times per second one tick happens.
+	//This could be calculated once at start, but putting it here for clarity's sake.
+	uint32_t ticksPerSecond = (HAL_RCC_GetPCLK1Freq() * 2) / (htim.Instance->PSC + 1);
+	double incrementsPerTick = fractionOfSecond / (double)ticksPerSecond;
+
+	return ticks * incrementsPerTick;
 }
 
 uint32_t ReadCurrentTicks(TIM_HandleTypeDef &htim)
