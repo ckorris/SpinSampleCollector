@@ -25,7 +25,7 @@ public:
         
 public:
      
-	SamplePacket(int sampleCount);
+	SamplePacket(uint16_t sampleCount);
      
 	~SamplePacket();
      

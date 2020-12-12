@@ -34,7 +34,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define SENSOR_COUNT 1
-#define ADC_BUF_LEN 32000 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
+#define ADC_BUF_LEN 24000 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
 						  //or it'll never throw the interrupt.
 
 
