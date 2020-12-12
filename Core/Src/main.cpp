@@ -34,7 +34,7 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 #define SENSOR_COUNT 4
-#define ADC_BUF_LEN 10000 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
+#define ADC_BUF_LEN 4 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
 						  //or it'll never throw the interrupt.
 
 
@@ -68,8 +68,8 @@ int isFinished = 0;
 int disableConsoleMessages = 0;
 
 //Timing related.
-std::chrono::time_point<std::chrono::high_resolution_clock> start;
-std::chrono::time_point<std::chrono::high_resolution_clock> end;
+std::chrono::high_resolution_clock::time_point start;
+std::chrono::high_resolution_clock::time_point end;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -190,7 +190,7 @@ int main(void)
 				  isStarted = 1;
 
 				  //Start DMA attached to the ADC for us. Just give handle to ADC instance, buffer, and buffer size.
-				  //start = std::chrono::high_resolution_clock::now();
+				  start = std::chrono::high_resolution_clock::now();
 				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_buf, ADC_BUF_LEN);
 
 				  //HAL_Delay(1);
@@ -202,8 +202,15 @@ int main(void)
 	  {
 
 			//Debug the values to see where they're not being updated.
-		    uint16_t firstValue = transmit_buf[0];
+		    //uint16_t firstValue = transmit_buf[0];
 			//PrintUARTIntValue(&huart3, "While Loop Finished Callback val 0: ", firstValue);
+
+		  	//Get the total duration.
+		    //long startLong = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
+		    //long endLong = std::chrono::duration_cast<std::chrono::microseconds>(end).count();
+		  	long totalTime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+
+		  	PrintUARTIntValue(&huart3, "Time elapsed: ", totalTime);
 
 			//Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
 			int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
@@ -585,7 +592,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 		HAL_ADC_Stop_DMA(&hadc1);
 
-		std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
+		//std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
 
 		//double seconds = diff.count(); //Exists only as a breakpoint for observation.
 		//double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
