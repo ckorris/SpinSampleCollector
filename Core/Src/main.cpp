@@ -26,7 +26,6 @@
 #include <string>
 #include <cstring>
 #include <stdio.h>
-#include <chrono>
 
 #include "SamplePacket.h"
 /* USER CODE END Includes */
@@ -53,6 +52,8 @@
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
 
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart3;
 
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
@@ -61,6 +62,10 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 uint16_t adc_buf[ADC_BUF_LEN];
 uint16_t transmit_buf[ADC_BUF_LEN];
 
+uint32_t startTicks;
+uint32_t endTicks;
+uint32_t writeTimeTest;
+
 int isPrimed = 0;
 int isStarted = 0;
 int isFinished = 0;
@@ -68,8 +73,6 @@ int isFinished = 0;
 int disableConsoleMessages = 0;
 
 //Timing related.
-std::chrono::high_resolution_clock::time_point start;
-std::chrono::high_resolution_clock::time_point end;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,11 +82,16 @@ static void MX_DMA_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 //Forward declaration.
 void PrintUARTMessage(UART_HandleTypeDef *huart, const char message[]);
 void PrintUARTIntValue(UART_HandleTypeDef *huart, const char label[], int value);
+
+uint32_t TicksToNanoseconds(TIM_HandleTypeDef &htim, uint32_t ticks);
+
+uint32_t ReadCurrentTicks(TIM_HandleTypeDef &htim);
 
 /* USER CODE END PFP */
 
@@ -124,16 +132,31 @@ int main(void)
   MX_USART3_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
   MX_ADC1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   //Confirm we're on.
   PrintUARTMessage(&huart3, "Initialized.");
 
-  //Pass callback handle to DMA instance.
-  //Enum is from stm32l4xx_hal_dma.h, gives interrupt versions. This is 'full transfer, or 'HAL DMA transfer complete.'
-  //HAL_DMA_RegisterCallback(&hdma_usart3_tx, HAL_DMA_XFER_CPLT_CB_ID, &DMATransferComplete); //Last is handle to callback.
-
   int hasTurnedOnGreenLED = 0;
+
+  //Enable register 1 for the timer.
+  //This would go better in that init function, but as I can't find how to enable it via the Cube GUI, I'd rather keep all my own init code in one place.
+  TIM2->CR1 = TIM_CR1_CEN;
+
+  startTicks = ReadCurrentTicks(htim2);
+
+  HAL_Delay(1000);
+
+  endTicks = ReadCurrentTicks(htim2);;
+  //writeTimeTest = TIM2->PSC;
+
+  //HAL_RTC_GetTime(&hrtc, &endTime, RTC_FORMAT_BIN);
+  //HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN);
+
+  PrintUARTIntValue(&huart3, "Start: ", TicksToNanoseconds(htim2, startTicks));
+  PrintUARTIntValue(&huart3, "End: ", TicksToNanoseconds(htim2, endTicks));
+  //PrintUARTIntValue(&huart3, "Clock: ", writeTimeTest);
 
   /* USER CODE END 2 */
 
@@ -189,8 +212,12 @@ int main(void)
 			  {
 				  isStarted = 1;
 
+				  //Update time.
+				  //HAL_RTC_GetTime(&hrtc, &startTime, RTC_FORMAT_BIN);
+				  //HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN); //We don't need this, but you can't read time without date.
+
 				  //Start DMA attached to the ADC for us. Just give handle to ADC instance, buffer, and buffer size.
-				  start = std::chrono::high_resolution_clock::now();
+				  //start = std::chrono::high_resolution_clock::now();
 				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_buf, ADC_BUF_LEN);
 
 				  //HAL_Delay(1);
@@ -206,11 +233,8 @@ int main(void)
 			//PrintUARTIntValue(&huart3, "While Loop Finished Callback val 0: ", firstValue);
 
 		  	//Get the total duration.
-		    //long startLong = std::chrono::duration_cast<std::chrono::microseconds>(start).count();
-		    //long endLong = std::chrono::duration_cast<std::chrono::microseconds>(end).count();
-		  	long totalTime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-
-		  	PrintUARTIntValue(&huart3, "Time elapsed: ", totalTime);
+		  	//TODO
+		  	//PrintUARTIntValue(&huart3, "Time elapsed: ", totalTime);
 
 			//Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
 			int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
@@ -394,6 +418,64 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 95;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_IC_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -584,7 +666,7 @@ static void MX_GPIO_Init(void)
 //Callback for when buffer is completely filled.
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-	end = std::chrono::high_resolution_clock::now();
+	//end = std::chrono::high_resolution_clock::now();
 
 	if(isFinished == 0)
 	{
@@ -635,6 +717,22 @@ void PrintUARTIntValue(UART_HandleTypeDef *huart, const char label[], int value)
 	char newLine[3] = "\r\n";
 	HAL_UART_Transmit(huart, (uint8_t*)newLine, 2, 10);
 
+}
+
+uint32_t TicksToNanoseconds(TIM_HandleTypeDef &htim, uint32_t ticks)
+{
+	//First get how many times per second one tick happens.
+	//This could be calculated once at start, but putting it here for clarity's sake.
+	uint32_t ticksPerSecond = (HAL_RCC_GetPCLK1Freq() * 2) / (htim.Instance->PSC + 1);
+	double nanoSecondsPerTick = 1000000000.0 / (double)ticksPerSecond;
+
+	return ticks * nanoSecondsPerTick;
+
+}
+
+uint32_t ReadCurrentTicks(TIM_HandleTypeDef &htim)
+{
+	return htim.Instance->CNT;
 }
 
 /* USER CODE END 4 */
