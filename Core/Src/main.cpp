@@ -149,6 +149,7 @@ int main(void)
 
   //Enable register 1 for the timer.
   //This would go better in that init function, but as I can't find how to enable it via the Cube GUI, I'd rather keep all my own init code in one place.
+  //Useful thread about this and related topics: https://stackoverflow.com/questions/42747128/does-hal-gettick-return-ticks-or-milliseconds-and-how-to-measure-in-microsec
   TIM2->CR1 = TIM_CR1_CEN;
 
   /* USER CODE END 2 */
@@ -227,8 +228,8 @@ int main(void)
 		  	//Get the total duration.
 		  	uint32_t durationTicks = endTicks - startTicks;
 		  	//TicksToSubSecond(TIM_HandleTypeDef &htim, uint32_t ticks, double fractionOfSecond)
-		  	uint32_t durationInNanoseconds = TicksToSubSecond(htim2, durationTicks, (double)NANOSECOND_DIVIDER);
-		  	PrintUARTIntValue(&huart3, "Time elapsed: ", durationInNanoseconds);
+		  	uint32_t durationInMicroseconds = TicksToSubSecond(htim2, durationTicks, (double)MICROSECOND_DIVIDER);
+		  	PrintUARTIntValue(&huart3, "Time elapsed: ", durationInMicroseconds);
 
 			//Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
 			int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
@@ -247,7 +248,7 @@ int main(void)
 				packet->Header.AnalongInPins = SENSOR_COUNT;
 				packet->Header.DeviceID = i;
 				packet->Header.SampleID = i; //Temp.
-				packet->Header.SamplingDurationUs = durationInNanoseconds; //Temp.
+				packet->Header.SamplingDurationUs = durationIMicroseconds; //Temp.
 				//packet.Header.SamplingDurationUs = diff; //Temp.
 
 				//packet.Samples = sensorSamples;
