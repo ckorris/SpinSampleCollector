@@ -257,17 +257,12 @@ int main(void)
 
 			for(int cycleIndex = 0; cycleIndex < CYCLE_COUNT; cycleIndex++)
 			{
-				//Get the time that this cycle took.
-				uint32_t durationTicks;
-				if(cycleIndex == 0)
-				{
-					durationTicks = cycleEndTimes[0] - startTicks;
-				}
-				else
-				{
-					durationTicks = cycleEndTimes[cycleIndex] - cycleEndTimes[cycleIndex - 1];
-				}
-				uint32_t durationInMicroseconds = TicksToSubSecond(htim2, durationTicks, (double)MICROSECOND_DIVIDER);
+				//Get the start and end times for the cycle.
+				//uint32_t cycleStartTicks = (cycleIndex == 0) ? startTicks : cycleEndTimes[cycleIndex - 1];
+				//uint32_t cycleEndTicks = cycleEndTimes[cycleIndex];
+
+				uint32_t cycleStartTimeUs = TicksToSubSecond(htim2, (cycleIndex == 0) ? startTicks : cycleEndTimes[cycleIndex - 1], (double)MICROSECOND_DIVIDER);
+				uint32_t cycleEndTimeUs = TicksToSubSecond(htim2, cycleEndTimes[cycleIndex], (double)MICROSECOND_DIVIDER);
 
 				for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
 				{
@@ -279,9 +274,10 @@ int main(void)
 					SamplePacket* packet = new SamplePacket(samplesPerDevice);
 					//SamplePacket packet(200);
 					packet->Header.AnalongInPins = SENSOR_COUNT;
+					packet->Header.startTimeUs = cycleStartTimeUs; //Temp.
+					packet->Header.endTimeUs = cycleEndTimeUs;
 					packet->Header.DeviceID = i;
-					packet->Header.SampleID = cycleIndex; //Treating this as a cycle. TODO: Rename.
-					packet->Header.SamplingDurationUs = durationInMicroseconds; //Temp.
+					packet->Header.SampleID = cycleIndex * SENSOR_COUNT + i; //Treating this as a cycle. TODO: Rename.
 					//packet.Header.SamplingDurationUs = diff; //Temp.
 
 					//packet.Samples = sensorSamples;

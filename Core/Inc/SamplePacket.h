@@ -9,7 +9,9 @@ struct SamplePacketHeader
 	int DeviceID;
 	int SampleID;
 
-	int SamplingDurationUs;
+	int32_t startTimeUs;
+	int32_t endTimeUs;
+
 	int AnalongInPins;  //Number of AnalogIn pins being read
 
 	//int SampleCount;
