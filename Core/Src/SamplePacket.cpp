@@ -13,11 +13,11 @@ const int TRANSMIT_COUNT = INT16_MAX;
 void SamplePacket::Transmit(UART_HandleTypeDef *huart)
 {
 	HAL_UART_Transmit(huart, (uint8_t*)MAGIC_VALUES, sizeof(MAGIC_VALUES), HAL_MAX_DELAY);
-	HAL_Delay(10);
+	//HAL_Delay(10);
 
 	//HAL_UART_Transmit(huart, (uint8_t*)&Header, sizeof(Header), HAL_MAX_DELAY);
 	HAL_UART_Transmit(huart, (uint8_t*)&Header, sizeof(Header), HAL_MAX_DELAY);
-	HAL_Delay(50);
+	//HAL_Delay(50);
 
 	//HAL_UART_Transmit(huart, (uint8_t*)Samples, sizeof(uint16_t) * Header.SampleCount, HAL_MAX_DELAY);
 
@@ -42,7 +42,7 @@ void SamplePacket::Transmit(UART_HandleTypeDef *huart)
 	}
 	*/
 
-	HAL_Delay(10);
+	//HAL_Delay(10);
 }
 
 SamplePacket::SamplePacket(uint16_t sampleCount)

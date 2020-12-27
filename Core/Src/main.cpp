@@ -36,7 +36,7 @@
 #define ADC_BUF_LEN 16000 //TODO: This has to be less than max value of unsigned 16-bit int (65,536)
 						  //or it'll never throw the interrupt.
 
-#define CYCLE_COUNT 3
+#define CYCLE_COUNT 12
 
 #define NANOSECOND_DIVIDER 1000000000
 #define MICROSECOND_DIVIDER 1000000
@@ -208,9 +208,7 @@ int main(void)
 	  //If primed and didn't collect samples yet, check the sound detector to see if we can start.
 	  if(isPrimed == 1 && isStarted == 0)
 	  {
-
 			  GPIO_PinState state = HAL_GPIO_ReadPin(SoundDetectorGate_GPIO_Port, SoundDetectorGate_Pin);
-			  //GPIO_PinState state = GPIO_PIN_SET; //TEST
 			  HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, state);
 
 			  if(state == GPIO_PIN_SET)
@@ -227,30 +225,17 @@ int main(void)
 
 				  for(int i = 0; i < CYCLE_COUNT; i++)
 				  {
-					  //delete transmitBuffers[i]; //Gonna handle that at the end now.
 					  uint16_t* newBuffer = new uint16_t[ADC_BUF_LEN];
 					  transmitBuffers[i] = newBuffer;
 				  }
 
 				  HAL_ADC_Start_DMA(&hadc1, (uint32_t*)&adc_buf, ADC_BUF_LEN);
-
-				  //HAL_Delay(1);
 			  }
 
 	  }
 
 	  if (isFinished == 1)
 	  {
-
-			//Debug the values to see where they're not being updated.
-		    //uint16_t firstValue = transmit_buf[0];
-			//PrintUARTIntValue(&huart3, "While Loop Finished Callback val 0: ", firstValue);
-
-		  	//Get the total duration.
-		  	//uint32_t durationTicks = endTicks - startTicks;
-		  	//uint32_t durationInMicroseconds = TicksToSubSecond(htim2, durationTicks, (double)MICROSECOND_DIVIDER);
-		  	//PrintUARTIntValue(&huart3, "Time elapsed: ", durationInMicroseconds);
-
 			//Get number of samples per device, rounding down so as not to throw out-of-bounds exception.
 			int samplesPerDevice = ADC_BUF_LEN / SENSOR_COUNT;
 			samplesPerDevice -= ADC_BUF_LEN % SENSOR_COUNT;
@@ -258,43 +243,27 @@ int main(void)
 			for(int cycleIndex = 0; cycleIndex < CYCLE_COUNT; cycleIndex++)
 			{
 				//Get the start and end times for the cycle.
-				//uint32_t cycleStartTicks = (cycleIndex == 0) ? startTicks : cycleEndTimes[cycleIndex - 1];
-				//uint32_t cycleEndTicks = cycleEndTimes[cycleIndex];
-
 				uint32_t cycleStartTimeUs = TicksToSubSecond(htim2, (cycleIndex == 0) ? startTicks : cycleEndTimes[cycleIndex - 1], (double)MICROSECOND_DIVIDER);
 				uint32_t cycleEndTimeUs = TicksToSubSecond(htim2, cycleEndTimes[cycleIndex], (double)MICROSECOND_DIVIDER);
 
 				for(int i = 0; i < SENSOR_COUNT; i++) //i is device ID, and offset with in adc_buf.' //TEMP
 				{
-					uint16_t* sensorSamples = new uint16_t[samplesPerDevice];
-					//uint16_t sensorSamples[samplesPerDevice];
-
-					//Make a packet to send from this.
-					//SamplePacket packet(samplesPerDevice);
+					//Make a packet to send from this.;
 					SamplePacket* packet = new SamplePacket(samplesPerDevice);
-					//SamplePacket packet(200);
 					packet->Header.AnalongInPins = SENSOR_COUNT;
 					packet->Header.startTimeUs = cycleStartTimeUs; //Temp.
 					packet->Header.endTimeUs = cycleEndTimeUs;
 					packet->Header.DeviceID = i;
 					packet->Header.SampleID = cycleIndex * SENSOR_COUNT + i; //Treating this as a cycle. TODO: Rename.
-					//packet.Header.SamplingDurationUs = diff; //Temp.
-
-					//packet.Samples = sensorSamples;
 
 					for(int j = 0; j < samplesPerDevice; j++)
 					{
-						//sensorSamples[j] = transmit_buf[j * SENSOR_COUNT + i];
-						sensorSamples[j] = transmitBuffers[cycleIndex][j * SENSOR_COUNT + i];
-						//packet.Samples[j] = j;
+						packet->Samples[j]  = transmitBuffers[cycleIndex][j * SENSOR_COUNT + i];
 					}
 
-					packet->Samples = sensorSamples;
-
 					packet->Transmit(&huart3);
-					HAL_Delay(50);
-					delete [] sensorSamples;
 					delete packet;
+
 				}
 
 				delete transmitBuffers[cycleIndex];
@@ -715,16 +684,7 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
 		//Log start time in ticks.
-		//endTicks = ReadCurrentTicks(htim2);
-
 		cycleEndTimes[currentCycle] = ReadCurrentTicks(htim2);
-
-		//HAL_ADC_Stop_DMA(&hadc1);
-
-		//std::chrono::duration<double> diff = std::chrono::duration_cast<std::chrono::duration<double>>(end-start);
-
-		//double seconds = diff.count(); //Exists only as a breakpoint for observation.
-		//double duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
 
 		int halfBufferLength = ADC_BUF_LEN / 2;
 
